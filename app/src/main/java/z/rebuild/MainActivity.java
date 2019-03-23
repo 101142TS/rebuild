@@ -23,10 +23,12 @@ public class MainActivity extends AppCompatActivity {
 
     //public final static String mTargetPackage = "jjjj.z";
     //public final static String mTargetPackage = "com.whty.wicity.china";
-    public final static String mTargetPackage = "com.tencent.android.qqdownloader";
+    //public final static String mTargetPackage = "com.tencent.android.qqdownloader";
     //public final static String mTargetPackage = "cl.coders.faketraveler";
     //public final static String mTargetPackage = "com.example.simple";
     //public final static String mTargetPackage = "com.uberspot.a2048";
+    //public final static String mTargetPackage = "com.mogujie";
+    public final static String mTargetPackage = "com.tencent.mtt";
     static {
         System.loadLibrary("rebuild");
     }

@@ -19,7 +19,12 @@
 #include <unistd.h>
 #include <dirent.h>
 
-
+# define mywrite(filename, ...) do {                                                        \
+        FILE *fp = fopen(filename.c_str(), "w");                                            \
+        fprintf(fp, __VA_ARGS__);                                                           \
+        fflush(fp);                                                                         \
+        fclose(fp);                                                                         \
+    } while(false)
 struct FupkInterface {
     void* reserved0;
     void* reserved1;
@@ -49,15 +54,8 @@ jclass dumpMethodclazz;
 
 std::string str;
 std::string codepath;
-
-# define ILOGME(...) do {                                                        \
-        char debugStrBuf[128];                                              \
-        snprintf(debugStrBuf, sizeof(debugStrBuf), __VA_ARGS__);            \
-        FILE *fp = fopen(logfile.c_str(), "a");                     \
-        fprintf(fp, __VA_ARGS__);                                           \
-        fflush(fp);                                                         \
-        fclose(fp);                                                         \
-    } while(false)
+int tot_dvm;
+std::string DvmName[50];
 
 int Mode;
 int userDexFilesSize() {
@@ -877,11 +875,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
         // 如果程序崩溃，则可以通过这种方式，将该类加入黑名单
         {
             std::string last_dump = std::string(dumppath) + std::string("last_dump");
-
-            FILE *fp = fopen(last_dump.c_str(), "w");
-            fprintf(fp, "%d\n", i);
-            fflush(fp);
-            fclose(fp);
+            mywrite(last_dump, "%d\n", i);
         }
 
 
@@ -1009,8 +1003,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         itdir = itdir + "/" + std::string(tmp);
                     }
 
-                    FILE *fp = fopen(itdir.c_str(), "w");
-                    fclose(fp);
+                    mywrite(itdir, " ");
                     //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
                     if (!method->insns || ac & ACC_NATIVE) {
                         if (pData->directMethods[i].codeOff) {
@@ -1180,8 +1173,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         itdir = itdir + "/" + std::string(tmp);
                     }
 
-                    FILE *fp = fopen(itdir.c_str(), "w");
-                    fclose(fp);
+                    mywrite(itdir, " ");
                     //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
                     if (!method->insns || ac & ACC_NATIVE) {
                         if (pData->virtualMethods[i].codeOff) {
@@ -1573,14 +1565,25 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
     mkdir(str.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     std::string tidFile = str + std::string("/tid.txt");
 
-    {
-        FILE *fp = fopen(tidFile.c_str(), "w");
-        fprintf(fp, "%d\n", gettid());
-        fflush(fp);
-        fclose(fp);
-    }
+    mywrite(tidFile, "%d\n", gettid());
     sleep((int)millis);
 
+    std::string dvmFile = str + std::string("/dvmName.txt");
+    if (access(dvmFile.c_str(), W_OK) != 0) {
+        //不存在这个文件，不知道要dump哪几个类
+        FLOGE("ERROR : no dvmName.txt");
+    }
+    {
+        FILE *fp = fopen(dvmFile.c_str(), "r");
+        tot_dvm = 0;
+        char s[1000];
+        while (fscanf(fp, "%s", s) != EOF) {
+            DvmName[tot_dvm] = std::string(s);
+            tot_dvm++;
+        }
+        fclose(fp);
+    }
+#if 0
     if (Mode == 1) {
         std::string ok = str + std::string("/OK.txt");
         if (access(ok.c_str(), W_OK) != 0) {
@@ -1588,47 +1591,68 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
             return;
         }
     }
-
-    for (int i = 0; i < userDexFilesSize(); i++) {
-        const char *name;
-        auto pDvmDex = getdvmDex(i, name);
-
-        if (pDvmDex == nullptr) {
-            FLOGE("dvmDex %d : nullptr", i);
-            continue;
-        }
-
-        FLOGE("dvmDex %d : %s", i, name);
-
-        Object *loader = searchClassLoader(pDvmDex);
-
-        if (loader == NULL)
-            continue;
-
+#endif
+    for (int j = 0; j < tot_dvm; j++) {
         std::string path;
         path = str + std::string("/dex/");
 
         mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
         char tmp[10];
-        itoa(i, tmp);
+        itoa(j, tmp);
         path = path + std::string(tmp) + std::string("/");
         mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
-        std::string done = path + "isdone";
         codepath = str + std::string("/code/");
         mkdir(codepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    }
+    for (int j = 0; j < tot_dvm; j++) {
+        //当前名称为DvmName[j]
+        FLOGE("dvmDex %d : %s", j, DvmName[j].c_str());
+
+        std::string path;
+        path = str + std::string("/dex/");
+
+        char tmp[10];
+        itoa(j, tmp);
+        path = path + std::string(tmp) + std::string("/");
+
+        std::string done = path + "isdone";
+        codepath = str + std::string("/code/");
 
         if (access(done.c_str(), W_OK) == 0) {
             continue;
         }
 
-        FLOGE("dvmDex %d : %s", i, path.c_str());
-        dumpFromDvmDex(pDvmDex, loader, path.c_str());
+        bool hasfound = false;
+        for (int i = 0; i < userDexFilesSize(); i++) {
+            const char *name;
+            auto pDvmDex = getdvmDex(i, name);
 
-        FILE *fp = fopen(done.c_str(), "w");
-        fprintf(fp, "done it");
-        fclose(fp);
+            if (pDvmDex == nullptr) {
+                continue;
+            }
+            if (std::string(name) != DvmName[j])
+                continue;
+
+            Object *loader = searchClassLoader(pDvmDex);
+
+            if (loader == NULL)
+                continue;
+            hasfound = true;
+
+
+            dumpFromDvmDex(pDvmDex, loader, path.c_str());
+
+            mywrite(done, "done it");
+        }
+        if (hasfound == false) {
+            FLOGE("ERROR : not found %d", j);
+            return;
+        }
     }
+
+    std::string OK = str + std::string("/OK.txt");
+    mywrite(OK, "OK");
     return;
 }
 bool init() {
