@@ -55,7 +55,7 @@ jclass dumpMethodclazz;
 std::string str;
 std::string codepath;
 int tot_dvm;
-std::string DvmName[50];
+u4 DvmName[50];
 
 int Mode;
 int userDexFilesSize() {
@@ -989,9 +989,11 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         continue;
                     }
                 }
-                else {
+                if (Mode == 0) {
+                    if (ac & ACC_ABSTRACT) {
 
-                    if (ac & ACC_NATIVE) {
+                    }
+                    else if (ac & ACC_NATIVE) {
                         itdir = itdir + "/" + "NATIVE";
                     }
                     else if (!method->insns) {
@@ -1003,7 +1005,10 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         itdir = itdir + "/" + std::string(tmp);
                     }
 
-                    mywrite(itdir, " ");
+                    if (!(ac & ACC_ABSTRACT)) {
+                        mywrite(itdir, " ");
+                    }
+
                     //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
                     if (!method->insns || ac & ACC_NATIVE) {
                         if (pData->directMethods[i].codeOff) {
@@ -1161,7 +1166,10 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                 }
                 if (Mode == 0) {
                     //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
-                    if (ac & ACC_NATIVE) {
+                    if (ac & ACC_ABSTRACT) {
+
+                    }
+                    else if (ac & ACC_NATIVE) {
                         itdir = itdir + "/" + "NATIVE";
                     }
                     else if (!method->insns) {
@@ -1173,7 +1181,10 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         itdir = itdir + "/" + std::string(tmp);
                     }
 
-                    mywrite(itdir, " ");
+                    if (!(ac & ACC_ABSTRACT)) {
+                        mywrite(itdir, " ");
+                    }
+
                     //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
                     if (!method->insns || ac & ACC_NATIVE) {
                         if (pData->virtualMethods[i].codeOff) {
@@ -1576,9 +1587,9 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
     {
         FILE *fp = fopen(dvmFile.c_str(), "r");
         tot_dvm = 0;
-        char s[1000];
-        while (fscanf(fp, "%s", s) != EOF) {
-            DvmName[tot_dvm] = std::string(s);
+        u4 classDefsSize;
+        while (fscanf(fp, "%u", &classDefsSize) != EOF) {
+            DvmName[tot_dvm] = classDefsSize;
             tot_dvm++;
         }
         fclose(fp);
@@ -1606,8 +1617,8 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
         mkdir(codepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     }
     for (int j = 0; j < tot_dvm; j++) {
-        //当前名称为DvmName[j]
-        FLOGE("dvmDex %d : %s", j, DvmName[j].c_str());
+        //当前个数为DvmName[j]
+        FLOGE("dvmDex %d : %u", j, DvmName[j]);
 
         std::string path;
         path = str + std::string("/dex/");
@@ -1631,7 +1642,8 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
             if (pDvmDex == nullptr) {
                 continue;
             }
-            if (std::string(name) != DvmName[j])
+            FLOGE("can chos %d %u", i, pDvmDex->pDexFile->pHeader->classDefsSize);
+            if (pDvmDex->pDexFile->pHeader->classDefsSize != DvmName[j])
                 continue;
 
             Object *loader = searchClassLoader(pDvmDex);
