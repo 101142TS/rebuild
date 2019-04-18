@@ -24,7 +24,21 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "com.vjson.anime";  //legu 2.10.2.2
     //public final static String mTargetPackage = "com.jr.kingofglorysupport"; //legu 2.10.2.3
     //public final static String mTargetPackage = "com.billy.sdclean"; //2.10.4.0
-    public final static String mTargetPackage = "org.fuyou.wly";    //libjiagu.so 12e8d2721ae9109b1332540311376344
+    //public final static String mTargetPackage = "org.fuyou.wly";    //libjiagu.so 12e8d2721ae9109b1332540311376344
+    //public final static String mTargetPackage = "com.example.eisk.cn";    //libjiagu.so b6dd50c44eead298423d1853025cfe17
+    //public final static String mTargetPackage = "com.systoon.beijingtoon";  //libjiagu.so   91d2e05ac30d91afbf02a8e2d4448d14
+    //public final static String mTargetPackage = "com.majun.landlordtreasure";   //libjiagu.so   c777cc1017287f00d9cdd022b867d8ae
+    //public final static String mTargetPackage = "cbp.game.chess"; //libjiagu.so    f880afeacaf320cd2eaf44a928aa9d91
+    //public final static String mTargetPackage = "com.nanxi.a411"; //libjiagu.so b080d680f71862a4d7b4ccf9e41853e5
+    //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so bdc6e7786076696da260d8bbbafe570e
+    //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so f0fa7384273217a2431ab1c60ed21037
+    public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so efe21d36f54114e1067b620071573265
+    //public final static String mTargetPackage = "com.mytest.demo"; //Bangle Demo
+    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20190312
+    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20180208
+    //public final static String mTargetPackage = "zzz.jjni"; //360sample
+    //public final static String mTargetPackage = "com.sf.activity";   //assets/ijm_lib/   20190412
+    //public final static String mTargetPackage = "com.yanxin.eloanan";   //assets/main000/   20190321
     static {
         System.loadLibrary("rebuild");
     }

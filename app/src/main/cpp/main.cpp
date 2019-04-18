@@ -56,7 +56,7 @@ std::string str;
 std::string codepath;
 int tot_dvm;
 u4 DvmName[50];
-
+int class_sum, method_sum;
 int Mode;
 int userDexFilesSize() {
     return userDexFiles->tableSize;
@@ -832,6 +832,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
     size_t classdef_idx = 0;
 
     int now_crash = 1;
+    class_sum = num_class_defs;
     for (size_t i = 0; i < num_class_defs; i++)
     {
         //FLOGE("DexDump : current write pointer at 0x%08x", (unsigned int)cur);
@@ -916,6 +917,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
         if (pData->directMethods)
         {
+            method_sum += pData->header.directMethodsSize;
             for (uint32_t i = 0; i < pData->header.directMethodsSize; i++) {
                 //从clazz来获取method，这里获取到的应该是真实信息
                 Method *method = &(clazz->directMethods[i]);
@@ -1091,6 +1093,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
         if (pData->virtualMethods)
         {
+            method_sum += pData->header.virtualMethodsSize;
             for (uint32_t i = 0; i < pData->header.virtualMethodsSize; i++) {
                 //从clazz来获取method，这里获取到的应该是真实信息
                 Method *method = &(clazz->virtualMethods[i]);
@@ -1652,10 +1655,11 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
                 continue;
             hasfound = true;
 
-
+            class_sum = 0;
+            method_sum = 0;
             dumpFromDvmDex(pDvmDex, loader, path.c_str());
 
-            mywrite(done, "done it");
+            mywrite(done, "%d %d\n", class_sum, method_sum);
         }
         if (hasfound == false) {
             FLOGE("ERROR : not found %d", j);
