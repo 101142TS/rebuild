@@ -897,7 +897,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
         FLOGE("DexDump class: %s", descriptor);
 
-
+        //
         if (!fdvmIsClassInitialized(clazz))
         {
             if (fdvmInitClass(clazz))
