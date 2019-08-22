@@ -15,7 +15,7 @@ public class MainActivity extends AppCompatActivity {
     public final static String rebuildSo = "/data/local/tmp/librebuild.so";
     public final static String hookFile = "/data/local/tmp/unpack.txt";
     public final static int mWaitingTime = 5;
-    public final static int mMode = 0;
+    public final static int mMode = 1;
 
     public MainActivity() {
         super();
@@ -32,13 +32,21 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "com.nanxi.a411"; //libjiagu.so b080d680f71862a4d7b4ccf9e41853e5
     //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so bdc6e7786076696da260d8bbbafe570e
     //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so f0fa7384273217a2431ab1c60ed21037
-    public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so efe21d36f54114e1067b620071573265
+    //public final static String mTargetPackage = "com.huxiu";    //liabjiagu.so efe21d36f54114e1067b620071573265
     //public final static String mTargetPackage = "com.mytest.demo"; //Bangle Demo
-    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20190312
-    //public final static String mTargetPackage = "com.pmp.ppmoney"; //libDexHelper.so    20180208
+    //public final static String mTargetPackage = "com.pmp.ppmoney";
     //public final static String mTargetPackage = "zzz.jjni"; //360sample
     //public final static String mTargetPackage = "com.sf.activity";   //assets/ijm_lib/   20190412
     //public final static String mTargetPackage = "com.yanxin.eloanan";   //assets/main000/   20190321
+    //public final static String mTargetPackage = "com.sf.activity";   //assets/ijm_lib/
+    //public final static String mTargetPackage = "com.iss.qilubank";
+    //public final static String mTargetPackage = "com.greenpoint.android.mc10086.activity";
+    //public final static String mTargetPackage = "com.icbc";
+    //public final static String mTargetPackage = "com.perflyst.twire";
+    //public final static String mTargetPackage = "com.example.simple";
+    public final static String mTargetPackage = "com.perflyst.twire";
+    //public final static String mTargetPackage = "edu.testapk.crackme";
+    //public final static String mTargetPackage = "github.vatsal.easyweatherdemo";
     static {
         System.loadLibrary("rebuild");
     }

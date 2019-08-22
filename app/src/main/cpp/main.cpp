@@ -18,7 +18,8 @@
 #include <set>
 #include <unistd.h>
 #include <dirent.h>
-
+#include <algorithm>
+#include <errno.h>
 # define mywrite(filename, ...) do {                                                        \
         FILE *fp = fopen(filename.c_str(), "w");                                            \
         fprintf(fp, __VA_ARGS__);                                                           \
@@ -53,7 +54,7 @@ jmethodID hookMethodID;
 jclass dumpMethodclazz;
 
 std::string str;
-std::string codepath;
+std::string code_dir;
 int tot_dvm;
 u4 DvmName[50];
 int class_sum, method_sum;
@@ -184,7 +185,7 @@ int MAXLEN = 1024;
 
 //历史中崩溃的类的个数 有可能为0
 int crash_class_cnt;
-int crash_class[100010];
+u4 crash_class[100010];
 
 int readDumpPath(const char* path)
 {
@@ -799,12 +800,11 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
     /*
      *  计算我dump出的有效代码（这里指能填充回dex文件的）与jr的不同的数目
      */
-    int diff_method, total_method;
+    int diff_method;
     FILE *method_fp;
     if (Mode == 1) {
         std::string diff_part = std::string(dumppath) + std::string("diff.txt");
         diff_method = 0;
-        total_method = 0;
 
         method_fp = fopen(diff_part.c_str(), "w");
     }
@@ -822,8 +822,13 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
     uint32_t mask = 0x3ffff;
     void* cur;
     DexClassDef* pClassDefRec;
-    const char *header = "Landroid";
-    unsigned int num_class_defs = pDexFile->pHeader->classDefsSize;
+    const char *header1 = "Landroid";
+    const char *header2 = "Ldalvik";
+    const char *header3 = "Ljava";
+    const char *header4 = "Llibcore";
+    const char *header5 = "Ljavax";
+    const char *header6 = "Lbutterknife";
+    u4 num_class_defs = pDexFile->pHeader->classDefsSize;
 
     pClassDefRec = (DexClassDef*)metadata_ptr;
     cur = current;
@@ -833,7 +838,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
     int now_crash = 1;
     class_sum = num_class_defs;
-    for (size_t i = 0; i < num_class_defs; i++)
+    for (u4 i = 0; i < num_class_defs; i++)
     {
         //FLOGE("DexDump : current write pointer at 0x%08x", (unsigned int)cur);
         ClassObject *clazz = NULL;
@@ -842,23 +847,19 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
         const char *descriptor = dexGetClassDescriptor(pDvmDex->pDexFile, pClassDef);
 
-#if 0
-        /*
-        if (strcmp(descriptor, "Lcom/whty/activity/login/NewPhoneRegistActivity$10$1$1;") != 0) {
-            continue;
-        }
-        */
-
-        if (strcmp(descriptor, "Lorg/apache/http/conn/scheme/Scheme;") != 0)
-            continue;
-#endif
         DexClassDef temp = *pClassDef;
 
-
+        bool fromrecord = 0;
         //如果是系统类，或者classDataOff为0，或者当前类位于黑名单中， 则跳过
 
         FLOGE("DexDump : descriptor %d : %s", i, descriptor);
-        if (!strncmp(header, descriptor, 8) || !pClassDef->classDataOff ||
+        if (!strncmp(header1, descriptor, strlen(header1)) ||
+            !strncmp(header2, descriptor, strlen(header2)) ||
+            !strncmp(header3, descriptor, strlen(header3)) ||
+            !strncmp(header4, descriptor, strlen(header4)) ||
+            !strncmp(header5, descriptor, strlen(header5)) ||
+            !strncmp(header6, descriptor, strlen(header6)) ||
+            !pClassDef->classDataOff ||
             (now_crash <= crash_class_cnt && crash_class[now_crash] == i))
         {
             if (now_crash <= crash_class_cnt && crash_class[now_crash] == i)
@@ -876,9 +877,10 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
         // 如果程序崩溃，则可以通过这种方式，将该类加入黑名单
         {
             std::string last_dump = std::string(dumppath) + std::string("last_dump");
-            mywrite(last_dump, "%d\n", i);
+            mywrite(last_dump, "%u\n", i);
         }
 
+        //          here
 
         fdvmClearException(self);
         clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
@@ -895,11 +897,58 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
         FLOGE("DexDump class: %s", descriptor);
 
+
         if (!fdvmIsClassInitialized(clazz))
         {
             if (fdvmInitClass(clazz))
             {
                 FLOGE("DexDump init: %s", descriptor);
+                fromrecord = 1;
+            }
+            else {
+                fromrecord = 0;
+                /*
+                I/dalvikvm( 5642): Rejecting re-init on previously-failed class Lcom/perflyst/twire/adapters/MainActivityAdapter; v=0x41565be8
+                W/dalvikvm( 5642): VFY: 'this' arg 'Ljava/lang/Object;' not instance of 'Lcom/perflyst/twire/adapters/MainActivityAdapter;'
+                W/dalvikvm( 5642): VFY:  rejecting opcode 0x6e at 0x0009
+                W/dalvikvm( 5642): VFY:  rejected Lcom/perflyst/twire/activities/main/TopStreamsActivity;.addToAdapter (Ljava/util/List;)V
+                W/dalvikvm( 5642): Verifier rejected class Lcom/perflyst/twire/activities/main/TopStreamsActivity;
+                */
+#if 0
+                const char *header0 = "Lcom/perflyst";
+
+                if (strncmp(header0, descriptor, strlen(header0)) != 0)
+                    goto not_wanted;
+                FLOGE("DexDump init: %s failed", descriptor);
+                for (int k = 0; k < clazz->directMethodCount; k++) {
+                    Method *method = &(clazz->directMethods[k]);
+                    FLOGE("directMethod name : %s", method->name);
+                    const DexCode* pCode = dvmGetMethodCode(method);
+
+                    if (pCode != NULL) {
+                        FLOGE("directMethod insnsSize : %d", pCode->insnsSize);
+                        for (int l = 0; l < pCode->insnsSize; l++) {
+                            FLOGE("%d %02x", l, pCode->insns[l]);
+                        }
+                    }
+
+                }
+                for (int k = 0; k < clazz->virtualMethodCount; k++) {
+                    Method *method = &(clazz->virtualMethods[k]);
+                    FLOGE("virtualMethod name : %s", method->name);
+                    const DexCode* pCode = dvmGetMethodCode(method);
+
+                    if (pCode != NULL) {
+                        FLOGE("virtualMethod name : %d", pCode->insnsSize);
+                        for (int l = 0; l < pCode->insnsSize; l++) {
+                            FLOGE("%d %02x", l, pCode->insns[l]);
+                        }
+                    }
+                }
+
+                not_wanted:
+                ;
+#endif
             }
         }
 
@@ -915,47 +964,222 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
             continue;
         }
 
-        if (pData->directMethods)
-        {
-            method_sum += pData->header.directMethodsSize;
-            for (uint32_t i = 0; i < pData->header.directMethodsSize; i++) {
-                //从clazz来获取method，这里获取到的应该是真实信息
-                Method *method = &(clazz->directMethods[i]);
-                uint32_t ac = (method->accessFlags) & mask; // mask = 0x3ffff 即不会改变正常的ac，只是去掉无用的高位
 
-                FLOGE("DexDump direct method name %s.%s", descriptor, method->name);
+        if (fromrecord == 1) {
+            if (pData->directMethods) {
+                method_sum += pData->header.directMethodsSize;
+                for (uint32_t i = 0; i < pData->header.directMethodsSize; i++) {
+                    //从clazz来获取method，这里获取到的应该是真实信息
+                    Method *method = &(clazz->directMethods[i]);
+                    uint32_t ac =
+                            (method->accessFlags) & mask; // mask = 0x3ffff 即不会改变正常的ac，只是去掉无用的高位
 
-                DexStringCache pCache;
-                dexStringCacheInit(&pCache);
-                dexStringCacheAlloc(&pCache, 1010);
-                dexProtoGetMethodDescriptor(&(method->prototype), &pCache);
+                    ALOGI("DexDump direct method name %s.%s", descriptor, method->name);
 
-                std::string itdir = codepath;
-                int ln = strlen(descriptor);
-                for (int i = 0; i < ln - 1; i++) {
-                    if (descriptor[i] == '/')
+                    std::string biggest_file_path;
+                    s8 biggest_file_size = -1;
+                    if (strcmp(method->name, "<clinit>") != 0) {
+                        //先获取本地的method信息
+                        DexStringCache pCache;
+                        dexStringCacheInit(&pCache);
+                        dexStringCacheAlloc(&pCache, 1010);
+                        dexProtoGetMethodDescriptor(&(method->prototype), &pCache);
+
+                        std::string itdir = code_dir;
+                        int ln = strlen(descriptor);
+                        for (int i = 0; i < ln - 1; i++) {
+                            if (descriptor[i] == '/')
+                                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                            itdir.push_back(descriptor[i]);
+                        }
                         mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                    itdir.push_back(descriptor[i]);
+                        itdir = itdir + std::string("/") + std::string(method->name);
+                        mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                        char tmp[60];
+                        u4 hashvalue = dvmComputeUtf8Hash(pCache.value);
+                        itoa(tmp, hashvalue);
+                        itdir = itdir + std::string("/") + std::string(tmp);
+                        mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                        dexStringCacheRelease(&pCache);
+                        FLOGE("DexDump direct dir's name %s", itdir.c_str());
+
+                        /*
+                         * 然后在这个目录下找到最大的已有method,这里有可能会出现
+                         * 0:   直接将method更新成native，然后continue
+                         * 1 或 多:   选size最大那个
+                         * 多:
+                         */
+
+
+                        DIR *dir;
+                        struct dirent *pt;
+
+                        //std::string right_dir = check_it(itdir);
+                        std::string right_dir = itdir;
+                        if ((dir = opendir(itdir.c_str())) == NULL) {
+                            FLOGE("ERROR : no such dir");
+                            FLOGE("%s", itdir.c_str());
+                            FLOGE("%s", right_dir.c_str());
+                            continue;
+                        }
+
+                        FLOGE("opendir success", itdir.c_str());
+                        int file_num = 0;
+
+                        while ((pt = readdir(dir)) != NULL) {
+                            if (strcmp(pt->d_name, ".") == 0 ||
+                                strcmp(pt->d_name, "..") == 0)    ///current dir OR parrent dir
+                                continue;
+
+
+                            std::string file_path = itdir + "/" + std::string(pt->d_name);
+                            struct stat statbuff;
+                            stat(file_path.c_str(), &statbuff);
+                            if (statbuff.st_size < 0)
+                                continue;
+                            else {
+                                file_num++;
+                                if (statbuff.st_size > biggest_file_size) {
+
+                                    biggest_file_size = statbuff.st_size;
+                                    biggest_file_path = file_path;
+                                }
+                            }
+                        }
+                        closedir(dir);
+                        FLOGE("get biggest_file_path success %s", biggest_file_path.c_str());
+                        if (file_num == 0 || biggest_file_size == 0) {
+                            //对应着method->insns = 0 的情况
+                            pData->directMethods[i].accessFlags = ac;
+                            pData->directMethods[i].codeOff = 0;
+                            continue;
+                        }
+                    }
+                    //ac和dexMethod中的不符合，则需要修正
+                    if (ac != pData->directMethods[i].accessFlags) {
+                        ALOGI("DexDump method ac");
+                        pData->directMethods[i].accessFlags = ac;
+                    }
+
+                    DexCode *code;
+                    if (strcmp(method->name, "<clinit>") != 0) {
+                        u1 buff[101000];
+
+                        errno = 0;
+                        FILE *fp = fopen(biggest_file_path.c_str(), "rb");
+                        if (fp == NULL) {
+                            FLOGE("fopen failed %d", errno);
+                        }
+                        int siz = fread(buff, sizeof(u1), 100000, fp);
+                        FLOGE("siz = %d", siz);
+                        fclose(fp);
+
+                        code = (DexCode *) malloc(siz + 4);
+                        memcpy(code, buff, siz);
+                    } else
+                        code = (DexCode *) ((const u1 *) method->insns - 16);
+
+                    FLOGE("get *code success");
+                    /*
+                     * 比较不同
+                     */
+                    bool same_flag = true;
+
+                    if (method->insns == NULL)
+                        same_flag = false;
+                    else {
+                        DexCode *f_code = (DexCode *) ((const u1 *) method->insns - 16);
+                        if (code->insnsSize != f_code->insnsSize) {
+                            same_flag = false;
+                        } else {
+                            int diff_cnt = 0;
+                            for (int k = 0; k < code->insnsSize; k++) {
+                                if (code->insns[k] != f_code->insns[k]) {
+                                    diff_cnt++;
+                                }
+                            }
+                            if (diff_cnt > code->insnsSize / 5)
+                                same_flag = false;
+                        }
+                    }
+
+                    if (same_flag == false) {
+                        diff_method++;
+                        fprintf(method_fp, "%s.%s\n", descriptor, method->name);
+                    }
+
+                    pData->directMethods[i].codeOff = (u4) cur - (u4) ptr;
+
+                    uint8_t *item = (uint8_t *) code;
+                    int code_item_len = 0;
+                    if (code->triesSize) {
+                        const u1 *handler_data = dexGetCatchHandlerData(code);
+                        const u1 **phandler = (const u1 **) &handler_data;
+                        uint8_t *tail = codeitem_end(phandler);
+                        code_item_len = (int) (tail - item);
+                    } else {
+                        code_item_len = 16 + code->insnsSize * 2;
+                    }
+
+                    writeBytes(cur, item, code_item_len);
+                    ((DexCode *) cur)->debugInfoOff = 0;
+                    cur = (void *) ((u4) cur + code_item_len);
+                    while ((u4) cur & 3) cur = (void *) ((u4) cur + 1);
+
+                    if (strcmp(method->name, "<clinit>") != 0) {
+                        free(code);
+                    }
                 }
-                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                itdir = itdir + std::string("/") + std::string(method->name);
-                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                char tmp[60];
-                u4 hashvalue = dvmComputeUtf8Hash(pCache.value);
-                itoa(tmp, hashvalue);
-                itdir = itdir + std::string("/") + std::string(tmp);
-                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                dexStringCacheRelease(&pCache);
+            }
 
+            if (pData->virtualMethods) {
+                method_sum += pData->header.virtualMethodsSize;
+                for (uint32_t i = 0; i < pData->header.virtualMethodsSize; i++) {
+                    //从clazz来获取method，这里获取到的应该是真实信息
+                    Method *method = &(clazz->virtualMethods[i]);
+                    uint32_t ac =
+                            (method->accessFlags) & mask; // mask = 0x3ffff 即不会改变正常的ac，只是去掉无用的高位
 
-                std::string file_path;
-                std::string file_name;
+                    ALOGI("DexDump direct method name %s.%s", descriptor, method->name);
 
-                if (Mode == 1 && strcmp(method->name, "<clinit>") != 0) {
+                    //先获取本地的method信息
+                    DexStringCache pCache;
+                    dexStringCacheInit(&pCache);
+                    dexStringCacheAlloc(&pCache, 1010);
+                    dexProtoGetMethodDescriptor(&(method->prototype), &pCache);
+
+                    std::string itdir = code_dir;
+                    int ln = strlen(descriptor);
+                    for (int i = 0; i < ln - 1; i++) {
+                        if (descriptor[i] == '/')
+                            mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                        itdir.push_back(descriptor[i]);
+                    }
+                    mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                    itdir = itdir + std::string("/") + std::string(method->name);
+                    mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                    char tmp[60];
+                    u4 hashvalue = dvmComputeUtf8Hash(pCache.value);
+                    itoa(tmp, hashvalue);
+                    itdir = itdir + std::string("/") + std::string(tmp);
+                    mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+                    dexStringCacheRelease(&pCache);
+                    FLOGE("DexDump direct dir's name %s", itdir.c_str());
+
+                    /*
+                     * 然后在这个目录下找到最大的已有method,这里有可能会出现
+                     * 0:   直接将method更新成native，然后continue
+                     * 1 或 多:   选size最大那个
+                     * 多:
+                     */
+                    std::string biggest_file_path;
+                    s8 biggest_file_size = -1;
+
                     DIR *dir;
-                    struct dirent *ptr;
+                    struct dirent *pt;
 
-                    std::string right_dir = check_it(itdir);
+                    //std::string right_dir = check_it(itdir);
+                    std::string right_dir = itdir;
                     if ((dir = opendir(itdir.c_str())) == NULL) {
                         FLOGE("ERROR : no such dir");
                         FLOGE("%s", itdir.c_str());
@@ -963,53 +1187,123 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         continue;
                     }
 
-
+                    FLOGE("opendir success", itdir.c_str());
                     int file_num = 0;
 
-                    while ((ptr = readdir(dir)) != NULL) {
-                        if (strcmp(ptr->d_name, ".") == 0 ||
-                            strcmp(ptr->d_name, "..") == 0)    ///current dir OR parrent dir
+                    while ((pt = readdir(dir)) != NULL) {
+                        if (strcmp(pt->d_name, ".") == 0 ||
+                            strcmp(pt->d_name, "..") == 0)    ///current dir OR parrent dir
                             continue;
-                        file_num++;
 
-                        file_name = std::string(ptr->d_name);
-                        file_path = itdir + "/" + file_name;
+
+                        std::string file_path = itdir + "/" + std::string(pt->d_name);
+                        struct stat statbuff;
+                        stat(file_path.c_str(), &statbuff);
+                        if (statbuff.st_size < 0)
+                            continue;
+                        else {
+                            file_num++;
+                            if (statbuff.st_size > biggest_file_size) {
+
+                                biggest_file_size = statbuff.st_size;
+                                biggest_file_path = file_path;
+                            }
+                        }
                     }
-                    if (file_num == 0) {
-                        FLOGE("ERROR : no file");
+                    closedir(dir);
+                    FLOGE("get biggest_file_path success %s", biggest_file_path.c_str());
+                    if (file_num == 0 || biggest_file_size == 0) {
+                        //对应着method->insns = 0 的情况
+                        pData->virtualMethods[i].accessFlags = ac;
+                        pData->virtualMethods[i].codeOff = 0;
                         continue;
                     }
 
-                    if (file_num > 1) {
-                        FLOGE("ERROR: too much file");
-                        continue;
+                    //ac和dexMethod中的不符合，则需要修正
+                    if (ac != pData->virtualMethods[i].accessFlags) {
+                        ALOGI("DexDump method ac");
+                        pData->virtualMethods[i].accessFlags = ac;
                     }
 
-                    if (file_name == "NATIVE") {
-                        pData->directMethods[i].accessFlags = ac | ACC_NATIVE;
-                        pData->directMethods[i].codeOff = 0;
-                        continue;
+                    DexCode *code;
+                    if (strcmp(method->name, "<clinit>") != 0) {
+                        u1 buff[101000];
+
+                        errno = 0;
+                        FILE *fp = fopen(biggest_file_path.c_str(), "rb");
+                        if (fp == NULL) {
+                            FLOGE("fopen failed %d", errno);
+                        }
+                        int siz = fread(buff, sizeof(u1), 100000, fp);
+                        FLOGE("siz = %d", siz);
+                        fclose(fp);
+
+                        code = (DexCode *) malloc(siz + 4);
+                        memcpy(code, buff, siz);
+                    } else
+                        code = (DexCode *) ((const u1 *) method->insns - 16);
+                    FLOGE("get *code success");
+                    /*
+                     * 比较不同
+                     */
+                    bool same_flag = true;
+
+                    if (method->insns == NULL)
+                        same_flag = false;
+                    else {
+                        DexCode *f_code = (DexCode *) ((const u1 *) method->insns - 16);
+                        if (code->insnsSize != f_code->insnsSize) {
+                            same_flag = false;
+                        } else {
+                            int diff_cnt = 0;
+                            for (int k = 0; k < code->insnsSize; k++) {
+                                if (code->insns[k] != f_code->insns[k]) {
+                                    diff_cnt++;
+                                }
+                            }
+                            if (diff_cnt > code->insnsSize / 5)
+                                same_flag = false;
+                        }
+                    }
+
+                    if (same_flag == false) {
+                        diff_method++;
+                        fprintf(method_fp, "%s.%s\n", descriptor, method->name);
+                    }
+
+                    pData->virtualMethods[i].codeOff = (u4) cur - (u4) ptr;
+
+                    uint8_t *item = (uint8_t *) code;
+                    int code_item_len = 0;
+                    if (code->triesSize) {
+                        const u1 *handler_data = dexGetCatchHandlerData(code);
+                        const u1 **phandler = (const u1 **) &handler_data;
+                        uint8_t *tail = codeitem_end(phandler);
+                        code_item_len = (int) (tail - item);
+                    } else {
+                        code_item_len = 16 + code->insnsSize * 2;
+                    }
+
+                    writeBytes(cur, item, code_item_len);
+                    ((DexCode *) cur)->debugInfoOff = 0;
+                    cur = (void *) ((u4) cur + code_item_len);
+                    while ((u4) cur & 3) cur = (void *) ((u4) cur + 1);
+
+                    if (strcmp(method->name, "<clinit>") != 0) {
+                        free(code);
                     }
                 }
-                if (Mode == 0) {
-                    if (ac & ACC_ABSTRACT) {
+            }
+        }
+        else if (fromrecord == 0) {
+            if (pData->directMethods) {
+                for (uint32_t i = 0; i < pData->header.directMethodsSize; i++) {
+                    //从clazz来获取method，这里获取到的应该是真实信息
+                    Method *method = &(clazz->directMethods[i]);
+                    uint32_t ac =
+                            (method->accessFlags) & mask; // mask = 0x3ffff 即不会改变正常的ac，只是去掉无用的高位
 
-                    }
-                    else if (ac & ACC_NATIVE) {
-                        itdir = itdir + "/" + "NATIVE";
-                    }
-                    else if (!method->insns) {
-                        itdir = itdir + "/" + "0";
-                    }
-                    else {
-                        u4 codeHash = ComputeCodeHash(method);
-                        itoa(tmp, codeHash);
-                        itdir = itdir + "/" + std::string(tmp);
-                    }
-
-                    if (!(ac & ACC_ABSTRACT)) {
-                        mywrite(itdir, " ");
-                    }
+                    ALOGI("DexDump direct method name %s.%s", descriptor, method->name);
 
                     //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
                     if (!method->insns || ac & ACC_NATIVE) {
@@ -1019,176 +1313,41 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         }
                         continue;
                     }
-                }
 
-                //ac和dexMethod中的不符合，则需要修正
-                if (ac != pData->directMethods[i].accessFlags) {
-                    FLOGE("DexDump method ac");
-                    pData->directMethods[i].accessFlags = ac;
-                }
-
-                //构造完整DexCode结构
-                pData->directMethods[i].codeOff = (u4) cur - (u4) ptr;
-                DexCode *code;
-                if (Mode == 1 && strcmp(method->name, "<clinit>") != 0) {
-                    u1 buff[101000];
-
-                    FILE *fp = fopen(file_path.c_str(), "r");
-
-                    int siz = fread(buff, sizeof(u1), 100000, fp);
-                    fclose(fp);
-
-                    code = (DexCode *)malloc(siz + 4);
-                    memcpy(code, buff, siz);
-
-                    total_method++;
-                    bool same_flag = true;
-                    for (int k = 0; k < code->insnsSize; k++) {
-                        if (code->insns[k] != method->insns[k]) {
-                            same_flag = false;
-                            break;
-                        }
+                    //ac和dexMethod中的不符合，则需要修正
+                    if (ac != pData->directMethods[i].accessFlags) {
+                        ALOGI("DexDump method ac");
+                        pData->directMethods[i].accessFlags = ac;
                     }
-                    if (same_flag == false) {
-                        diff_method++;
-                        fprintf(method_fp, "%s.%s\n", descriptor, method->name);
+
+                    //构造完整DexCode结构
+                    pData->directMethods[i].codeOff = (u4) cur - (u4) ptr;
+                    DexCode *code = (DexCode *) ((const u1 *) method->insns - 16);
+                    uint8_t *item = (uint8_t *) code;
+                    int code_item_len = 0;
+                    if (code->triesSize) {
+                        const u1 *handler_data = dexGetCatchHandlerData(code);
+                        const u1 **phandler = (const u1 **) &handler_data;
+                        uint8_t *tail = codeitem_end(phandler);
+                        code_item_len = (int) (tail - item);
+                    } else {
+                        code_item_len = 16 + code->insnsSize * 2;
                     }
-                }
-                else
-                    code = (DexCode *) ((const u1 *) method->insns - 16);
 
-                uint8_t *item = (uint8_t *) code;
-                int code_item_len = 0;
-                if (code->triesSize) {
-                    const u1 *handler_data = dexGetCatchHandlerData(code);
-                    const u1 **phandler = (const u1 **) &handler_data;
-                    uint8_t *tail = codeitem_end(phandler);
-                    code_item_len = (int) (tail - item);
-                } else {
-                    code_item_len = 16 + code->insnsSize * 2;
+                    writeBytes(cur, item, code_item_len);
+                    ((DexCode *) cur)->debugInfoOff = 0;
+                    cur = (void *) ((u4) cur + code_item_len);
+                    while ((u4) cur & 3) cur = (void *) ((u4) cur + 1);
                 }
-                //打印bytecode
-                /*
-                for (int k = 0; k < ((DexCode *)item)->insnsSize; k++) {
-                    FLOGE("%d : %x", k, ((DexCode *)item)->insns[k]);
-                }
-                */
-                writeBytes(cur, item, code_item_len);
-                ((DexCode *) cur)->debugInfoOff = 0;
-                cur = (void *) ((u4) cur + code_item_len);
-                while ((u4) cur & 3) cur = (void *) ((u4) cur + 1);
-
-                if (Mode == 1 && strcmp(method->name, "<clinit>") != 0)
-                    free(code);
-                else {
-                    FILE *fp = fopen(itdir.c_str(), "w");
-                    fwrite(code, sizeof(u1), 16, fp);
-                    fwrite(code->insns, sizeof(u1), code_item_len - 16, fp);
-                    fflush(fp);
-                    fclose(fp);
-                }
-                FLOGE("DexDump normal write");
             }
-        }
 
-        if (pData->virtualMethods)
-        {
-            method_sum += pData->header.virtualMethodsSize;
-            for (uint32_t i = 0; i < pData->header.virtualMethodsSize; i++) {
-                //从clazz来获取method，这里获取到的应该是真实信息
-                Method *method = &(clazz->virtualMethods[i]);
-                uint32_t ac = (method->accessFlags) & mask; // mask = 0x3ffff 即不会改变正常的ac，只是去掉无用的高位
+            if (pData->virtualMethods) {
+                for (uint32_t i = 0; i < pData->header.virtualMethodsSize; i++) {
+                    Method *method = &(clazz->virtualMethods[i]);
+                    uint32_t ac = (method->accessFlags) & mask;
 
-                FLOGE("DexDump virtual method name %s.%s", descriptor, method->name);
+                    ALOGI("DexDump virtual method name %s.%s", descriptor, method->name);
 
-                DexStringCache pCache;
-                dexStringCacheInit(&pCache);
-                dexStringCacheAlloc(&pCache, 1010);
-                dexProtoGetMethodDescriptor(&(method->prototype), &pCache);
-
-                std::string itdir = codepath;
-                int ln = strlen(descriptor);
-                for (int i = 0; i < ln - 1; i++) {
-                    if (descriptor[i] == '/')
-                        mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                    itdir.push_back(descriptor[i]);
-                }
-                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                itdir = itdir + std::string("/") + std::string(method->name);
-                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                char tmp[60];
-                u4 hashvalue = dvmComputeUtf8Hash(pCache.value);
-                itoa(tmp, hashvalue);
-                itdir = itdir + std::string("/") + std::string(tmp);
-                mkdir(itdir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-                dexStringCacheRelease(&pCache);
-
-
-                std::string file_path;
-                std::string file_name;
-
-                if (Mode == 1 && strcmp(method->name, "<clinit>") != 0) {
-                    DIR *dir;
-                    struct dirent *ptr;
-
-                    std::string right_dir = check_it(itdir);
-                    if ((dir = opendir(itdir.c_str())) == NULL) {
-                        FLOGE("ERROR : no such dir");
-                        FLOGE("%s", itdir.c_str());
-                        FLOGE("%s", right_dir.c_str());
-                        continue;
-                    }
-
-
-                    int file_num = 0;
-
-                    while ((ptr = readdir(dir)) != NULL) {
-                        if (strcmp(ptr->d_name, ".") == 0 ||
-                            strcmp(ptr->d_name, "..") == 0)    ///current dir OR parrent dir
-                            continue;
-                        file_num++;
-
-                        file_name = std::string(ptr->d_name);
-                        file_path = itdir + "/" + file_name;
-                    }
-                    if (file_num == 0) {
-                        FLOGE("ERROR : no file");
-                        continue;
-                    }
-
-                    if (file_num > 1) {
-                        FLOGE("ERROR: too much file");
-                        continue;
-                    }
-
-                    if (file_name == "NATIVE") {
-                        pData->virtualMethods[i].accessFlags = ac | ACC_NATIVE;
-                        pData->virtualMethods[i].codeOff = 0;
-                        continue;
-                    }
-                }
-                if (Mode == 0) {
-                    //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
-                    if (ac & ACC_ABSTRACT) {
-
-                    }
-                    else if (ac & ACC_NATIVE) {
-                        itdir = itdir + "/" + "NATIVE";
-                    }
-                    else if (!method->insns) {
-                        itdir = itdir + "/" + "0";
-                    }
-                    else {
-                        u4 codeHash = ComputeCodeHash(method);
-                        itoa(tmp, codeHash);
-                        itdir = itdir + "/" + std::string(tmp);
-                    }
-
-                    if (!(ac & ACC_ABSTRACT)) {
-                        mywrite(itdir, " ");
-                    }
-
-                    //method insns指针为空或者为native，但是dexMethod中codeOff不为0，则需要修正
                     if (!method->insns || ac & ACC_NATIVE) {
                         if (pData->virtualMethods[i].codeOff) {
                             pData->virtualMethods[i].accessFlags = ac;
@@ -1196,77 +1355,32 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                         }
                         continue;
                     }
-                }
 
-                //ac和dexMethod中的不符合，则需要修正
-                if (ac != pData->virtualMethods[i].accessFlags) {
-                    FLOGE("DexDump method ac");
-                    pData->virtualMethods[i].accessFlags = ac;
-                }
-
-                //构造完整DexCode结构
-                pData->virtualMethods[i].codeOff = (u4) cur - (u4) ptr;
-                DexCode *code;
-                if (Mode == 1 && strcmp(method->name, "<clinit>") != 0) {
-                    u1 buff[101000];
-
-                    FILE *fp = fopen(file_path.c_str(), "r");
-
-                    int siz = fread(buff, sizeof(u1), 100000, fp);
-                    fclose(fp);
-
-                    code = (DexCode *)malloc(siz + 4);
-                    memcpy(code, buff, siz);
-
-                    total_method++;
-                    bool same_flag = true;
-                    for (int k = 0; k < code->insnsSize; k++) {
-                        if (code->insns[k] != method->insns[k]) {
-                            same_flag = false;
-                            break;
-                        }
+                    if (ac != pData->virtualMethods[i].accessFlags) {
+                        ALOGI("DexDump method ac");
+                        pData->virtualMethods[i].accessFlags = ac;
                     }
-                    if (same_flag == false) {
-                        diff_method++;
-                        fprintf(method_fp, "%s.%s\n", descriptor, method->name);
-                    }
-                }
-                else
-                    code = (DexCode *) ((const u1 *) method->insns - 16);
-                uint8_t *item = (uint8_t *) code;
-                int code_item_len = 0;
-                if (code->triesSize) {
-                    const u1 *handler_data = dexGetCatchHandlerData(code);
-                    const u1 **phandler = (const u1 **) &handler_data;
-                    uint8_t *tail = codeitem_end(phandler);
-                    code_item_len = (int) (tail - item);
-                } else {
-                    code_item_len = 16 + code->insnsSize * 2;
-                }
-                //打印bytecode
-                /*
-                for (int k = 0; k < ((DexCode *)item)->insnsSize; k++) {
-                    FLOGE("%d : %x", k, ((DexCode *)item)->insns[k]);
-                }
-                */
-                writeBytes(cur, item, code_item_len);
-                ((DexCode *) cur)->debugInfoOff = 0;
-                cur = (void *) ((u4) cur + code_item_len);
-                while ((u4) cur & 3) cur = (void *) ((u4) cur + 1);
 
-                if (Mode == 1 && strcmp(method->name, "<clinit>") != 0)
-                    free(code);
-                else {
-                    FILE *fp = fopen(itdir.c_str(), "w");
-                    fwrite(code, sizeof(u1), 16, fp);
-                    fwrite(code->insns, sizeof(u1), code_item_len - 16, fp);
-                    fflush(fp);
-                    fclose(fp);
+                    pData->virtualMethods[i].codeOff = (u4) cur - (u4) ptr;
+                    DexCode *code = (DexCode *) ((const u1 *) method->insns - 16);
+                    uint8_t *item = (uint8_t *) code;
+                    int code_item_len = 0;
+                    if (code->triesSize) {
+                        const u1 *handler_data = dexGetCatchHandlerData(code);
+                        const u1 **phandler = (const u1 **) &handler_data;
+                        uint8_t *tail = codeitem_end(phandler);
+                        code_item_len = (int) (tail - item);
+                    } else {
+                        code_item_len = 16 + code->insnsSize * 2;
+                    }
+
+                    writeBytes(cur, item, code_item_len);
+                    ((DexCode *) cur)->debugInfoOff = 0;
+                    cur = (void *) ((u4) cur + code_item_len);
+                    while ((u4) cur & 3) cur = (void *) ((u4) cur + 1);
                 }
-                FLOGE("DexDump normal write");
             }
         }
-
         interface:
         //写入interfaceOff
         const DexTypeList* interface = dexGetInterfacesList(pDexFile, pClassDef);
@@ -1336,7 +1450,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
     classItem->offset = (u4)pClassDefRec - (u4)ptr;
 
     if (Mode == 1) {
-        fprintf(method_fp, "%d %d\n", diff_method, total_method);
+        fprintf(method_fp, "%d\n", diff_method);
         fflush(method_fp);
         fclose(method_fp);
     }
@@ -1381,7 +1495,7 @@ void rebuildDexFile(DexFile* pDexFile, DexMapItem* stringItem, DexMapItem* typeI
     char padding[64] = {0};
     u4 dexHeaderSize = sizeof(DexHeader);
 
-    snprintf(filePath, MAXLEN-1, "%swhole.dex_%d", dumppath, idx);
+    snprintf(filePath, MAXLEN-1, "%swhole.dex", dumppath);
     fp = fopen(filePath, "wb+");
     rewind(fp);
 
@@ -1475,16 +1589,27 @@ void readblacklist() {
 
     FILE *fp = fopen(black_list.c_str(), "r");
 
-    int x;
-    while (fscanf(fp, "%d", &x) != EOF) {
-        crash_class_cnt++;
-        crash_class[crash_class_cnt] = x;
+    u4 x;
+    while (fscanf(fp, "%u", &x) != EOF)
+        crash_class[++crash_class_cnt] = x;
+
+    std::sort(crash_class + 1, crash_class + 1 + crash_class_cnt);
+
+    int n = 1;
+    for (int i = 2; i <= crash_class_cnt; i++)  {
+        if (crash_class[i] == crash_class[i - 1])
+            continue;
+        crash_class[++n] = crash_class[i];
     }
+    crash_class_cnt = n;
+
     fclose(fp);
 }
 void dumpFromDvmDex(DvmDex* pDvmDex, Object *loader, const char* path)
 {
-    //path /jr/0/
+    /*
+     * path : /.../dex/num/
+     */
     DexFile *pDexFile = pDvmDex->pDexFile;
     if (!readDumpPath(path))
     {
@@ -1570,6 +1695,11 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
 
     str = env->GetStringUTFChars(folder, nullptr);
 
+    /*
+     * 如果是1,则应该将记录在本地的代码补全成dex文件
+     * 如果是0，则应该将直接提取
+     * 顺带将tid记录到tid.txt
+     */
     Mode = (int)mMode;
     if (Mode == 0) {
         str = str + std::string("/jr");
@@ -1578,10 +1708,12 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
     }
     mkdir(str.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     std::string tidFile = str + std::string("/tid.txt");
-
     mywrite(tidFile, "%d\n", gettid());
     sleep((int)millis);
 
+    /*
+     * 不管是哪种模式，都应该有dvmName记录每个dexfile的class数量
+     */
     std::string dvmFile = str + std::string("/dvmName.txt");
     if (access(dvmFile.c_str(), W_OK) != 0) {
         //不存在这个文件，不知道要dump哪几个类
@@ -1591,13 +1723,14 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
         FILE *fp = fopen(dvmFile.c_str(), "r");
         tot_dvm = 0;
         u4 classDefsSize;
-        while (fscanf(fp, "%u", &classDefsSize) != EOF) {
-            DvmName[tot_dvm] = classDefsSize;
-            tot_dvm++;
-        }
+        while (fscanf(fp, "%u", &classDefsSize) != EOF)
+            DvmName[tot_dvm++] = classDefsSize;
         fclose(fp);
     }
-#if 0
+
+    /*
+     * 没有ok,说明还没有完成dump
+     */
     if (Mode == 1) {
         std::string ok = str + std::string("/OK.txt");
         if (access(ok.c_str(), W_OK) != 0) {
@@ -1605,48 +1738,54 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
             return;
         }
     }
-#endif
-    for (int j = 0; j < tot_dvm; j++) {
+
+    /*
+     * 建立      /.../code/   目录
+     * 建立对应的 /.../dex/编号/ 目录
+     */
+    code_dir = str + std::string("/code/");
+    mkdir(code_dir.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    for (int i = 0; i < tot_dvm; i++) {
         std::string path;
         path = str + std::string("/dex/");
 
         mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-        char tmp[10];
-        itoa(j, tmp);
+        char tmp[10]; itoa(i, tmp);
         path = path + std::string(tmp) + std::string("/");
         mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-
-        codepath = str + std::string("/code/");
-        mkdir(codepath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     }
-    for (int j = 0; j < tot_dvm; j++) {
-        //当前个数为DvmName[j]
-        FLOGE("dvmDex %d : %u", j, DvmName[j]);
+
+
+    for (int i = 0; i < tot_dvm; i++) {
+        //当前个数为DvmName[i]
+        FLOGE("dvmDex %d : %u", i, DvmName[i]);
 
         std::string path;
         path = str + std::string("/dex/");
 
+        /*
+         * 先检查  /.../dex/编号/ 目录下是否存在isdone文件，如果存在，说明已经dump完成
+         *
+         */
         char tmp[10];
-        itoa(j, tmp);
+        itoa(i, tmp);
         path = path + std::string(tmp) + std::string("/");
-
         std::string done = path + "isdone";
-        codepath = str + std::string("/code/");
-
         if (access(done.c_str(), W_OK) == 0) {
             continue;
         }
 
+
         bool hasfound = false;
-        for (int i = 0; i < userDexFilesSize(); i++) {
+        for (int j = 0; j < userDexFilesSize(); j++) {
             const char *name;
-            auto pDvmDex = getdvmDex(i, name);
+            auto pDvmDex = getdvmDex(j, name);
 
             if (pDvmDex == nullptr) {
                 continue;
             }
-            FLOGE("can chos %d %u", i, pDvmDex->pDexFile->pHeader->classDefsSize);
-            if (pDvmDex->pDexFile->pHeader->classDefsSize != DvmName[j])
+            FLOGE("can chos %d %u", j, pDvmDex->pDexFile->pHeader->classDefsSize);
+            if (pDvmDex->pDexFile->pHeader->classDefsSize != DvmName[i])
                 continue;
 
             Object *loader = searchClassLoader(pDvmDex);
@@ -1659,15 +1798,18 @@ void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMod
             method_sum = 0;
             dumpFromDvmDex(pDvmDex, loader, path.c_str());
 
+            /*
+             * 类个数和方法个数
+             */
             mywrite(done, "%d %d\n", class_sum, method_sum);
         }
         if (hasfound == false) {
-            FLOGE("ERROR : not found %d", j);
+            FLOGE("ERROR : not found %d", i);
             return;
         }
     }
 
-    std::string OK = str + std::string("/OK.txt");
+    std::string OK = str + std::string("/rebuild_OK.txt");
     mywrite(OK, "OK");
     return;
 }
