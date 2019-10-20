@@ -44,9 +44,17 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "com.icbc";
     //public final static String mTargetPackage = "com.perflyst.twire";
     //public final static String mTargetPackage = "com.example.simple";
-    public final static String mTargetPackage = "com.perflyst.twire";
+    //public final static String mTargetPackage = "com.xargsgrep.portknocker";
+    //public final static String mTargetPackage = "org.scoutant.blokish";
+    //public final static String mTargetPackage = "org.zirco";
     //public final static String mTargetPackage = "edu.testapk.crackme";
     //public final static String mTargetPackage = "github.vatsal.easyweatherdemo";
+    //public final static String mTargetPackage = "com.xargsgrep.portknocker";
+    //public final static String mTargetPackage = "org.csploit.android";
+    //public final static String mTargetPackage = "jp.forkhub";
+    //public final static String mTargetPackage = "io.github.hopedia";
+    public final static String mTargetPackage = "org.schabi.newpipelegacy";
+    //public final static String mTargetPackage = "eu.depau.etchdroid";
     static {
         System.loadLibrary("rebuild");
     }

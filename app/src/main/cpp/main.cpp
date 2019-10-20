@@ -50,9 +50,9 @@ bool (*fdvmIsClassInitialized)(const ClassObject* clazz) = nullptr;
 bool (*fdvmInitClass)(ClassObject* clazz) = nullptr;
 void (*frecord)(const Method* curMethod) = nullptr;
 
-jmethodID hookMethodID;
 jclass dumpMethodclazz;
-
+jmethodID useClassLoaderID;
+JNIEnv* env_g;
 std::string str;
 std::string code_dir;
 int tot_dvm;
@@ -838,10 +838,13 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
     int now_crash = 1;
     class_sum = num_class_defs;
+
     for (u4 i = 0; i < num_class_defs; i++)
     {
         //FLOGE("DexDump : current write pointer at 0x%08x", (unsigned int)cur);
         ClassObject *clazz = NULL;
+        jstring className;
+        jobject ref = NULL;
         const u1 *data = NULL;
         DexClassData *pData = NULL;
         const DexClassDef *pClassDef = dexGetClassDef(pDvmDex->pDexFile, i);
@@ -849,7 +852,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
         DexClassDef temp = *pClassDef;
 
-        bool fromrecord = 0;
+        bool fromrecord = 1;
         //如果是系统类，或者classDataOff为0，或者当前类位于黑名单中， 则跳过
 
         FLOGE("DexDump : descriptor %d : %s", i, descriptor);
@@ -881,9 +884,16 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
         }
 
         //          here
-
+        gUpkInterface->reserved2 = (void *) (loader);
         fdvmClearException(self);
-        clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
+
+        className = env_g->NewStringUTF(descriptor);
+        ref = env_g->CallStaticObjectMethod(dumpMethodclazz, useClassLoaderID, className);
+        clazz = (ClassObject *) fdvmDecodeIndirectRef(fdvmThreadSelf(), ref);
+
+        env_g->DeleteLocalRef(className);
+
+        //clazz = fdvmDefineClass(pDvmDex, descriptor, loader);
         // 当classLookUp抛出异常时，若没有进行处理就进入下一次lookUp，将导致dalvikAbort
         // 具体见defineClassNative中的注释
         // 这里选择直接清空exception
@@ -907,51 +917,8 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
             }
             else {
                 fromrecord = 0;
-                /*
-                I/dalvikvm( 5642): Rejecting re-init on previously-failed class Lcom/perflyst/twire/adapters/MainActivityAdapter; v=0x41565be8
-                W/dalvikvm( 5642): VFY: 'this' arg 'Ljava/lang/Object;' not instance of 'Lcom/perflyst/twire/adapters/MainActivityAdapter;'
-                W/dalvikvm( 5642): VFY:  rejecting opcode 0x6e at 0x0009
-                W/dalvikvm( 5642): VFY:  rejected Lcom/perflyst/twire/activities/main/TopStreamsActivity;.addToAdapter (Ljava/util/List;)V
-                W/dalvikvm( 5642): Verifier rejected class Lcom/perflyst/twire/activities/main/TopStreamsActivity;
-                */
-#if 0
-                const char *header0 = "Lcom/perflyst";
-
-                if (strncmp(header0, descriptor, strlen(header0)) != 0)
-                    goto not_wanted;
-                FLOGE("DexDump init: %s failed", descriptor);
-                for (int k = 0; k < clazz->directMethodCount; k++) {
-                    Method *method = &(clazz->directMethods[k]);
-                    FLOGE("directMethod name : %s", method->name);
-                    const DexCode* pCode = dvmGetMethodCode(method);
-
-                    if (pCode != NULL) {
-                        FLOGE("directMethod insnsSize : %d", pCode->insnsSize);
-                        for (int l = 0; l < pCode->insnsSize; l++) {
-                            FLOGE("%d %02x", l, pCode->insns[l]);
-                        }
-                    }
-
-                }
-                for (int k = 0; k < clazz->virtualMethodCount; k++) {
-                    Method *method = &(clazz->virtualMethods[k]);
-                    FLOGE("virtualMethod name : %s", method->name);
-                    const DexCode* pCode = dvmGetMethodCode(method);
-
-                    if (pCode != NULL) {
-                        FLOGE("virtualMethod name : %d", pCode->insnsSize);
-                        for (int l = 0; l < pCode->insnsSize; l++) {
-                            FLOGE("%d %02x", l, pCode->insns[l]);
-                        }
-                    }
-                }
-
-                not_wanted:
-                ;
-#endif
             }
         }
-
         data = dexGetClassData(pDexFile, pClassDef);
 
         //返回DexClassData结构
@@ -1076,8 +1043,10 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
                         code = (DexCode *) malloc(siz + 4);
                         memcpy(code, buff, siz);
-                    } else
+                    } else {
+                        FLOGE("DexDump direct method name %s.%s : 0x%08x", descriptor, method->name, (unsigned int) method->insns);
                         code = (DexCode *) ((const u1 *) method->insns - 16);
+                    }
 
                     FLOGE("get *code success");
                     /*
@@ -1240,8 +1209,11 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
                         code = (DexCode *) malloc(siz + 4);
                         memcpy(code, buff, siz);
-                    } else
+                    } else {
+                        FLOGE("DexDump virtual method name %s.%s : 0x%08x", descriptor, method->name, (unsigned int) method->insns);
                         code = (DexCode *) ((const u1 *) method->insns - 16);
+                    }
+
                     FLOGE("get *code success");
                     /*
                      * 比较不同
@@ -1297,6 +1269,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
         }
         else if (fromrecord == 0) {
             if (pData->directMethods) {
+                method_sum += pData->header.directMethodsSize;
                 for (uint32_t i = 0; i < pData->header.directMethodsSize; i++) {
                     //从clazz来获取method，这里获取到的应该是真实信息
                     Method *method = &(clazz->directMethods[i]);
@@ -1322,6 +1295,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
                     //构造完整DexCode结构
                     pData->directMethods[i].codeOff = (u4) cur - (u4) ptr;
+                    FLOGE("DexDump direct method name %s.%s : 0x%08x", descriptor, method->name, (unsigned int) method->insns);
                     DexCode *code = (DexCode *) ((const u1 *) method->insns - 16);
                     uint8_t *item = (uint8_t *) code;
                     int code_item_len = 0;
@@ -1342,6 +1316,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
             }
 
             if (pData->virtualMethods) {
+                method_sum += pData->header.virtualMethodsSize;
                 for (uint32_t i = 0; i < pData->header.virtualMethodsSize; i++) {
                     Method *method = &(clazz->virtualMethods[i]);
                     uint32_t ac = (method->accessFlags) & mask;
@@ -1362,6 +1337,7 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                     }
 
                     pData->virtualMethods[i].codeOff = (u4) cur - (u4) ptr;
+                    FLOGE("DexDump virtual method name %s.%s : 0x%08x", descriptor, method->name, (unsigned int) method->insns);
                     DexCode *code = (DexCode *) ((const u1 *) method->insns - 16);
                     uint8_t *item = (uint8_t *) code;
                     int code_item_len = 0;
@@ -1438,6 +1414,10 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
 
         pClassDefRec[classdef_idx] = temp;
         classdef_idx++;
+
+        if (ref != NULL) {
+            env_g->DeleteLocalRef(ref);
+        }
     }
 
     FLOGE("DexDump Class end: %d ms", time);
@@ -1692,8 +1672,16 @@ void itoa(int x, char *s) {
 void rebuildAll(JNIEnv* env, jobject obj, jstring folder, jint millis, jint mMode) {
     FLOGE("in rebuildAll");
     FLOGE("millis = %d, mMode = %d", (int)millis, (int)mMode);
+    dumpMethodclazz = env->FindClass("android/app/fupk3/dumpMethod");
+    useClassLoaderID = env->GetStaticMethodID(dumpMethodclazz, "useClassLoader", "(Ljava/lang/String;)Ljava/lang/Class;");
+    if (useClassLoaderID == NULL) {
+        FLOGE("not found useClassLoaderID");
+        return;
+    }
 
+    env_g = env;
     str = env->GetStringUTFChars(folder, nullptr);
+
 
     /*
      * 如果是1,则应该将记录在本地的代码补全成dex文件
