@@ -53,8 +53,12 @@ public class MainActivity extends AppCompatActivity {
     //public final static String mTargetPackage = "org.csploit.android";
     //public final static String mTargetPackage = "jp.forkhub";
     //public final static String mTargetPackage = "io.github.hopedia";
-    public final static String mTargetPackage = "org.schabi.newpipelegacy";
+    //public final static String mTargetPackage = "org.schabi.newpipelegacy";
     //public final static String mTargetPackage = "eu.depau.etchdroid";
+    public final static String mTargetPackage = "com.qihoo360.mobilesafe.opti.powerctl";
+    //public final static String mTargetPackage = "com.forever.browser";
+    //public final static String mTargetPackage = "com.softbank.mbank.xy.qhjd";
+    //public final static String mTargetPackage = "com.picc.aasipods";
     static {
         System.loadLibrary("rebuild");
     }
