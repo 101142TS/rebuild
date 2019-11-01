@@ -21,7 +21,7 @@ public class MainActivity extends AppCompatActivity {
         super();
     }
 
-    //public final static String mTargetPackage = "com.vjson.anime";  //legu 2.10.2.2
+    //public final static String mTargetPackage = "com.vjson.animde";  //legu 2.10.2.2
     //public final static String mTargetPackage = "com.jr.kingofglorysupport"; //legu 2.10.2.3
     //public final static String mTargetPackage = "com.billy.sdclean"; //2.10.4.0
     //public final static String mTargetPackage = "org.fuyou.wly";    //libjiagu.so 12e8d2721ae9109b1332540311376344
