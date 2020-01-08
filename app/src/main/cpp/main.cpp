@@ -919,6 +919,12 @@ DexMapItem* DumpClass(void* ptr, void* &current, void *parament, void* &metadata
                 fromrecord = 0;
             }
         }
+
+        //////////////////////////////////
+        ////终极杀手鐗
+        //fromrecord = 0;
+        ////
+        //////////////////////////////////
         data = dexGetClassData(pDexFile, pClassDef);
 
         //返回DexClassData结构
